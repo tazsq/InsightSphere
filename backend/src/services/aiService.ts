@@ -1,45 +1,54 @@
-import { GoogleGenAI } from '@google/genai';
+import Groq from 'groq-sdk';
 
-// Lazily initialize the Google Gen AI SDK
-let aiClient: GoogleGenAI | null = null;
-const getAiClient = () => {
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Lazily initialize the Groq SDK client
+let groqClient: Groq | null = null;
+const getGroqClient = () => {
+  if (!groqClient) {
+    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
   }
-  return aiClient;
+  return groqClient;
 };
 
 export const generateChatResponse = async (conversation: any[]): Promise<string> => {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn("GEMINI_API_KEY is not set. Using mocked response.");
+    if (!process.env.GROQ_API_KEY) {
+      console.warn("GROQ_API_KEY is not set. Using mocked response.");
       return "Thank you for sharing that. Could you elaborate a bit more on how it impacted your semester?";
     }
 
-    const ai = getAiClient();
+    const groq = getGroqClient();
 
-    // Convert our conversation format to what the Gemini API expects
-    // The SDK chat interface expects 'user' or 'model' roles.
-    const history = conversation
-      .filter(msg => msg.role !== 'system') // Typically system prompts are handled differently or pre-pended to the first user message
+    // Find the system instruction if present
+    const systemMessage = conversation.find(msg => msg.role === 'system');
+    
+    // Format other messages for the chat completions API
+    const messages = conversation
+      .filter(msg => msg.role !== 'system')
       .map(msg => ({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content }]
+        role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        content: msg.content
       }));
 
-    const systemInstruction = conversation.find(msg => msg.role === 'system')?.content || '';
-      'You are an empathetic, professional AI Dean Assistant conducting a guided feedback interview with a student. Ask one question at a time. Be concise.';
+    // Prepend system instruction
+    if (systemMessage) {
+      messages.unshift({
+        role: 'system' as const,
+        content: systemMessage.content
+      });
+    } else {
+      messages.unshift({
+        role: 'system' as const,
+        content: 'You are an empathetic, professional AI Dean Assistant conducting a guided feedback interview with a student. Ask one question at a time. Be concise.'
+      });
+    }
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: history,
-        config: {
-            systemInstruction: systemInstruction,
-            temperature: 0.7,
-        }
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: messages,
+      temperature: 0.7,
     });
 
-    return response.text || "Thank you. Can you tell me more?";
+    return response.choices[0]?.message?.content || "Thank you. Can you tell me more?";
   } catch (error) {
     console.error("AI Chat Generation Error:", error);
     return "I appreciate your feedback. Let's move on to the next question.";
@@ -48,7 +57,7 @@ export const generateChatResponse = async (conversation: any[]): Promise<string>
 
 export const analyzeFeedbackSession = async (conversation: any[]): Promise<any> => {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
        // Return mocked analytics if no key
        return {
          sentiment: 'Neutral',
@@ -63,7 +72,7 @@ export const analyzeFeedbackSession = async (conversation: any[]): Promise<any> 
       .map(msg => `${msg.role === 'assistant' ? 'Interviewer' : 'Student'}: ${msg.content}`)
       .join('\n\n');
 
-    const ai = getAiClient();
+    const groq = getGroqClient();
 
     const prompt = `
       Analyze the following student feedback interview transcript. 
@@ -77,15 +86,15 @@ export const analyzeFeedbackSession = async (conversation: any[]): Promise<any> 
       ${transcript}
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: 'application/json'
-      }
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
     });
 
-    const resultText = response.text || "{}";
+    const resultText = response.choices[0]?.message?.content || "{}";
     return JSON.parse(resultText);
 
   } catch (error) {
@@ -101,8 +110,8 @@ export const analyzeFeedbackSession = async (conversation: any[]): Promise<any> 
 
 export const queryDeanAssistant = async (query: string, dataContext: any): Promise<string> => {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      return "This is a mocked response from the AI Dean Assistant. Please configure your GEMINI_API_KEY to get real insights.";
+    if (!process.env.GROQ_API_KEY) {
+      return "This is a mocked response from the AI Dean Assistant. Please configure your GROQ_API_KEY to get real insights.";
     }
 
     const prompt = `
@@ -115,14 +124,16 @@ export const queryDeanAssistant = async (query: string, dataContext: any): Promi
       Provide a concise, highly professional, and insightful answer based ONLY on this data. Use bullet points if necessary.
     `;
 
-    const ai = getAiClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: { temperature: 0.3 }
+    const groq = getGroqClient();
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3
     });
 
-    return response.text || "I'm sorry, I couldn't generate an answer.";
+    return response.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
   } catch (error) {
     console.error("Dean Assistant Error:", error);
     return "Error generating insight. Please try again.";

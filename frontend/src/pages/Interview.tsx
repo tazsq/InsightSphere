@@ -17,6 +17,7 @@ const Interview: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [anonymousToken, setAnonymousToken] = useState<string | null>(null);
   const [sessionSubmitted, setSessionSubmitted] = useState(false);
+  const [isConversationFinished, setIsConversationFinished] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -39,6 +40,7 @@ const Interview: React.FC = () => {
         
         setAnonymousToken(data.anonymousToken);
         setMessages([{ role: 'assistant', content: data.message }]);
+        setIsConversationFinished(false);
       } catch (error) {
         console.error('Failed to start session', error);
       } finally {
@@ -55,7 +57,7 @@ const Interview: React.FC = () => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || !anonymousToken) return;
+    if (!inputValue.trim() || !anonymousToken || isConversationFinished) return;
 
     const userMessage = inputValue.trim();
     setInputValue('');
@@ -75,6 +77,9 @@ const Interview: React.FC = () => {
       if (!res.ok) throw new Error(data.message);
       
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      if (data.isFinished) {
+        setIsConversationFinished(true);
+      }
     } catch (error) {
       console.error('Failed to send message', error);
       // Optional: Add error state to UI
@@ -182,36 +187,58 @@ const Interview: React.FC = () => {
         </div>
 
         <div style={{ position: 'sticky', bottom: '2rem' }}>
-          <form onSubmit={handleSendMessage} className="card flex items-center gap-3" style={{ padding: '0.75rem 1rem' }}>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Type your response here..."
-              style={{
-                flex: 1,
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                fontSize: '0.9375rem',
-                color: 'var(--text-primary)',
-                fontFamily: 'inherit'
-              }}
-              disabled={loading}
-              autoFocus
-            />
-            <button 
-              type="submit" 
-              className="btn btn-primary flex items-center justify-center" 
-              style={{ padding: '0.5rem', borderRadius: '50%', width: '36px', height: '36px' }}
-              disabled={!inputValue.trim() || loading}
-            >
-              <Send size={16} />
-            </button>
-          </form>
-          <p className="text-xs text-center text-muted mt-3">
-            Your responses are processed confidentially. Press Enter to send.
-          </p>
+          {isConversationFinished ? (
+            <div className="card flex flex-col items-center gap-4" style={{ padding: '1.5rem', border: '1px solid var(--success)', background: 'rgba(16, 185, 129, 0.05)' }}>
+              <div className="flex items-center gap-2" style={{ color: 'var(--success)', fontWeight: 600 }}>
+                <CheckCircle size={20} />
+                <span>Conversation Complete</span>
+              </div>
+              <p className="text-sm text-muted text-center" style={{ margin: 0 }}>
+                Thank you! All 5 feedback questions have been answered. Please click the button below to submit.
+              </p>
+              <button 
+                onClick={handleSubmitSession} 
+                className="btn btn-primary flex items-center justify-center gap-2" 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontWeight: 600, fontSize: '0.9375rem' }}
+                disabled={loading}
+              >
+                Submit Feedback
+              </button>
+            </div>
+          ) : (
+            <>
+              <form onSubmit={handleSendMessage} className="card flex items-center gap-3" style={{ padding: '0.75rem 1rem' }}>
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Type your response here..."
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    fontSize: '0.9375rem',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'inherit'
+                  }}
+                  disabled={loading}
+                  autoFocus
+                />
+                <button 
+                  type="submit" 
+                  className="btn btn-primary flex items-center justify-center" 
+                  style={{ padding: '0.5rem', borderRadius: '50%', width: '36px', height: '36px' }}
+                  disabled={!inputValue.trim() || loading}
+                >
+                  <Send size={16} />
+                </button>
+              </form>
+              <p className="text-xs text-center text-muted mt-3">
+                Your responses are processed confidentially. Press Enter to send.
+              </p>
+            </>
+          )}
         </div>
       </main>
     </div>

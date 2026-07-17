@@ -62,13 +62,36 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     // Add user's message
     session.conversation.push({ role: 'user', content: message });
 
-    // Call Gemini API to get the next question
-    const aiResponse = await generateChatResponse(session.conversation);
+    // Count how many answers the user has provided
+    const userMessageCount = session.conversation.filter(msg => msg.role === 'user').length;
+
+    let aiResponse = '';
+    let isFinished = false;
+
+    if (userMessageCount >= 5) {
+      aiResponse = "Thank you! You have completed the feedback interview. Please click the button below to submit your feedback.";
+      isFinished = true;
+    } else {
+      // Create a copy of the conversation to avoid mutating the database document
+      const chatConversation = [...session.conversation];
+      
+      // If we are about to ask the 5th and final question, instruct the AI to make it the final question
+      if (userMessageCount === 4) {
+        chatConversation[0] = {
+          role: 'system',
+          content: (chatConversation[0]?.content || '') + ' This is the 5th and final question. Ask for any final comments or suggestions.'
+        };
+      }
+      
+      // Call Gemini API to get the next question
+      aiResponse = await generateChatResponse(chatConversation);
+    }
+
     session.conversation.push({ role: 'assistant', content: aiResponse });
 
     await session.save();
 
-    res.json({ reply: aiResponse });
+    res.json({ reply: aiResponse, isFinished });
   } catch (error) {
     res.status(500).json({ message: 'Error processing chat', error });
   }
